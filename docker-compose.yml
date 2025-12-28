@@ -1,0 +1,96 @@
+---
+services:
+  # VPN gateway (network owner)
+  harbor-vpn:
+    image: qmcgaw/gluetun:latest
+    container_name: ${STACK_NAME}-vpn
+    environment:
+      - TZ=${TIMEZONE:-UTC}
+
+      # NordVPN (OpenVPN) via Gluetun
+      - VPN_SERVICE_PROVIDER=nordvpn
+      - OPENVPN_USER=${NORDVPN_USER}
+      - OPENVPN_PASSWORD=${NORDVPN_PASS}
+
+      # Prefer P2P endpoints
+      - SERVER_CATEGORIES=p2p
+
+      # Optional filters (enable as needed)
+      # - SERVER_COUNTRIES=${VPN_COUNTRY}      # e.g. Canada
+      # - SERVER_REGIONS=${VPN_REGION}         # e.g. Ontario
+      # - SERVER_CITIES=${VPN_CITY}            # e.g. Toronto
+
+      # Gluetun firewall defaults to restrictive; only allow what you explicitly need.
+    volumes:
+      - vpn-config:/gluetun
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    restart: unless-stopped
+
+    # IMPORTANT:
+    # Ports must be published here because other services share this network namespace.
+    ports:
+      # qBittorrent Web UI (accessible via LAN and also via Tailscale on the Tailnet IP)
+      - "${PUBLIC_PORT_WEBUI:-8080}:8080"
+
+      # Optional: if you need to access qBittorrent via Tailscale without exposing to LAN,
+      # remove the line above and rely on the Tailscale IP only.
+      # (But Docker port publishing is LAN-host wide; Tailscale access does not require it.)
+
+  # Tailscale sidecar (shares the VPN network namespace)
+  harbor-ts:
+    image: tailscale/tailscale:latest
+    container_name: ${STACK_NAME}-ts
+    hostname: ${TS_HOSTNAME}
+    network_mode: service:harbor-vpn
+    depends_on:
+      - harbor-vpn
+    environment:
+      - TS_AUTHKEY=${TS_AUTHKEY}
+      - "TS_EXTRA_ARGS=--advertise-tags=tag:container --reset"
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_USERSPACE=false
+    volumes:
+      - ts-state:/var/lib/tailscale
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - NET_ADMIN
+    restart: unless-stopped
+    ports:
+      # qBittorrent Web UI (accessible via LAN and also via Tailscale on the Tailnet IP)
+      - "${PUBLIC_PORT_WEBUI:-8080}:8080"
+
+  # Torrent client (all traffic forced through VPN by network namespace sharing)
+  harbor-qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: ${STACK_NAME}-qb
+    network_mode: service:harbor-vpn
+    depends_on:
+      - harbor-vpn
+      - harbor-ts
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TIMEZONE:-UTC}
+      - WEBUI_PORT=8080
+    volumes:
+      - qb-config:/config
+      - downloads:/downloads
+    restart: unless-stopped
+
+volumes:
+  ts-state:
+    name: ${STACK_NAME}-ts-state
+    driver: local
+  vpn-config:
+    name: ${STACK_NAME}-vpn-config
+    driver: local
+  qb-config:
+    name: ${STACK_NAME}-qb-config
+    driver: local
+  downloads:
+    name: ${STACK_NAME}-downloads
+    driver: local
