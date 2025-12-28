@@ -42,13 +42,13 @@ services:
   # Tailscale sidecar (shares the VPN network namespace)
   harbor-ts:
     image: tailscale/tailscale:latest
-    container_name: ${STACK_NAME}-ts
-    hostname: ${TS_HOSTNAME}
+    # Note: Do not set hostname or container_name when sharing a network namespace.
     network_mode: service:harbor-vpn
     depends_on:
       - harbor-vpn
     environment:
       - TS_AUTHKEY=${TS_AUTHKEY}
+      - TS_HOSTNAME=${TS_HOSTNAME}
       - "TS_EXTRA_ARGS=--advertise-tags=tag:container --reset"
       - TS_STATE_DIR=/var/lib/tailscale
       - TS_USERSPACE=false
@@ -59,14 +59,11 @@ services:
     cap_add:
       - NET_ADMIN
     restart: unless-stopped
-    ports:
-      # qBittorrent Web UI (accessible via LAN and also via Tailscale on the Tailnet IP)
-      - "${PUBLIC_PORT_WEBUI:-8080}:8080"
 
   # Torrent client (all traffic forced through VPN by network namespace sharing)
   harbor-qbittorrent:
     image: lscr.io/linuxserver/qbittorrent:latest
-    container_name: ${STACK_NAME}-qb
+    # Note: Do not set hostname or container_name when sharing a network namespace.
     network_mode: service:harbor-vpn
     depends_on:
       - harbor-vpn
@@ -78,7 +75,8 @@ services:
       - WEBUI_PORT=8080
     volumes:
       - qb-config:/config
-      - downloads:/downloads
+      # Bind a host path when DOWNLOADS_DIR is set; otherwise fall back to named volume 'downloads'.
+      - "${DOWNLOADS_DIR:-downloads}:/downloads"
     restart: unless-stopped
 
 volumes:
