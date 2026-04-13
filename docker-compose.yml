@@ -16,9 +16,9 @@ services:
       - SERVER_CATEGORIES=p2p
 
       # Optional filters (enable as needed)
-      # - SERVER_COUNTRIES=${VPN_COUNTRY}      # e.g. Canada
-      # - SERVER_REGIONS=${VPN_REGION}         # e.g. Ontario
-      # - SERVER_CITIES=${VPN_CITY}            # e.g. Toronto
+      - SERVER_COUNTRIES=${VPN_COUNTRY}      # e.g. Canada
+      - SERVER_REGIONS=${VPN_REGION}         # e.g. Ontario
+      - SERVER_CITIES=${VPN_CITY}            # e.g. Toronto
 
       # Gluetun firewall defaults to restrictive; only allow what you explicitly need.
     volumes:
